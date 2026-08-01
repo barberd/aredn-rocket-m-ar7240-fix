@@ -1,4 +1,31 @@
---- a/target/linux/ath79/dts/ar7241_ubnt_rocket-m.dts
+Index: openwrt/package/kernel/mac80211/patches/ath9k/514-ath9k_add_ar7240_pci_id.patch
+===================================================================
+--- /dev/null
++++ openwrt/package/kernel/mac80211/patches/ath9k/514-ath9k_add_ar7240_pci_id.patch
+@@ -0,0 +1,20 @@
++--- a/drivers/net/wireless/ath/ath9k/pci.c
+++++ b/drivers/net/wireless/ath/ath9k/pci.c
++@@ -773,6 +773,7 @@ static const struct pci_device_id ath_pc
++ #endif
++ 
++ 	{ PCI_VDEVICE(ATHEROS, 0xabcd) }, /* PCI-E  internal chip default ID */
+++	{ PCI_VDEVICE(ATHEROS, 0xff1c) }, /* AR7240 PCI uninitialized EEPROM */
++ 	{ 0 }
++ };
++ 
++--- a/drivers/net/wireless/ath/ath9k/hw.c
+++++ b/drivers/net/wireless/ath/ath9k/hw.c
++@@ -664,6 +664,7 @@ int ath9k_hw_init(struct ath_hw *ah)
++ 	/* These are all the AR5008/AR9001/AR9002/AR9003 hardware family of chipsets */
++ 	switch (ah->hw_version.devid) {
++ 	case AR9300_DEVID_INVALID:
+++	case 0xff1c:
++ 	case AR5416_DEVID_PCI:
++ 	case AR5416_DEVID_PCIE:
++ 	case AR5416_AR9100_DEVID:
+Index: openwrt/target/linux/ath79/dts/ar7241_ubnt_rocket-m.dts
+===================================================================
+--- openwrt.orig/target/linux/ath79/dts/ar7241_ubnt_rocket-m.dts
 +++ /dev/null
 @@ -1,37 +0,0 @@
 -// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
@@ -38,44 +65,10 @@
 -		nvmem-cell-names = "calibration";
 -	};
 -};
---- /dev/null
-+++ b/target/linux/ath79/dts/ar7240_ubnt_rocket-m.dts
-@@ -0,0 +1,33 @@
-+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
-+
-+#include "ar7240.dtsi"
-+#include "ar724x_ubnt_xm.dtsi"
-+#include "ar724x_ubnt_xm_outdoor.dtsi"
-+
-+/ {
-+	compatible = "ubnt,rocket-m", "ubnt,xm", "qca,ar7240";
-+	model = "Ubiquiti Rocket M (XM)";
-+};
-+
-+&usb_phy {
-+	status = "okay";
-+};
-+
-+&usb {
-+	status = "okay";
-+};
-+
-+&art {
-+	cal_art_1000: calibration@1000 {
-+		reg = <0x1000 0xeb8>;
-+	};
-+};
-+
-+&pcie {
-+	wifi: wifi@0,0 {
-+		compatible = "pci168c,002a";
-+		reg = <0x0000 0 0 0 0>;
-+		nvmem-cells = <&cal_art_1000>;
-+		nvmem-cell-names = "calibration";
-+	};
-+};
---- a/target/linux/ath79/image/generic-ubnt.mk
-+++ b/target/linux/ath79/image/generic-ubnt.mk
+Index: openwrt/target/linux/ath79/image/generic-ubnt.mk
+===================================================================
+--- openwrt.orig/target/linux/ath79/image/generic-ubnt.mk
++++ openwrt/target/linux/ath79/image/generic-ubnt.mk
 @@ -294,7 +294,7 @@ TARGET_DEVICES += ubnt_rocket-5ac-lite
  
  define Device/ubnt_rocket-m

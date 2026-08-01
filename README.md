@@ -29,13 +29,17 @@ cat /proc/cpuinfo | grep "system type"
 
 ## The Fix
 
-A single patch (`patches/803-ubiquiti-rocket-m-ar7240.patch`) that:
+A single patch (`patches/803-ubiquiti-rocket-m-ar7240.patch`) that fixes both Ethernet and WiFi:
 
-1. Replaces the DTS from `ar7241.dtsi` → `ar7240.dtsi`, putting the switch on the correct MDIO bus
-2. Removes the `&eth1` compatible override that's AR7241-specific
+**Ethernet fix:**
+1. Replaces the DTS from `ar7241.dtsi` → `ar7240.dtsi`, putting the built-in switch on the correct MDIO bus (mdio0 instead of mdio1)
+2. Adds `&eth0 { fixed-link { speed = <100>; full-duplex; }; }` for proper CPU-to-switch link
 3. Changes the SOC identifier in the image Makefile from `ar7241` → `ar7240`
 
-The board name, compatible string, and all other identifiers remain `ubnt,rocket-m` so no other AREDN scripts need modification.
+**WiFi fix:**
+4. Adds PCI device ID `0xff1c` to the ath9k driver's device table. On the AR7240, the PCI wifi card enumerates with a garbled device ID (`168c:ff1c`) because the EEPROM isn't loaded before PCI bus scan (unlike AR7241 which reads correctly). The old `ar71xx` target had a `pci-ath9k-fixup` mechanism for this; ath79 does not ([openwrt/openwrt#6707](https://github.com/openwrt/openwrt/issues/6707)). Adding the ID to the driver table lets ath9k bind and load calibration data normally.
+
+The board name and all other identifiers remain `ubnt,rocket-m` so no other AREDN scripts need modification.
 
 ## Pre-built Firmware
 
