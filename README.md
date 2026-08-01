@@ -1,67 +1,49 @@
-# AREDN Rocket M AR7240 Ethernet Fix
+# AREDN Rocket M AR7240 Fix
+
+Fixes Ethernet and WiFi on Ubiquiti Rocket M (XM) units with the **AR7240** SoC.
 
 ## Problem
 
-The Ubiquiti Rocket M (XM) exists in two hardware variants:
-- **AR7241** — works fine with AREDN 4.26.x on ath79
-- **AR7240** — Ethernet is completely non-functional (NO-CARRIER, no link)
+The Ubiquiti Rocket M (XM) shipped with two SoC variants:
+- **AR7241** — works with stock AREDN ath79 images
+- **AR7240** — completely broken: no Ethernet, no WiFi
 
-AREDN's `ubnt_rocket-m` image uses a device tree (DTS) based on `ar7241.dtsi`, which places the built-in Ethernet switch on **mdio1**. On the AR7240, the switch is on **mdio0**. This mismatch causes the switch driver to fail silently — it reads PHY UID as `0x00000000`, the Generic PHY driver is used, and no link is ever established.
+Check yours with: `grep "system type" /proc/cpuinfo`
 
-This is a **known upstream OpenWrt issue** ([openwrt/openwrt#6117](https://github.com/openwrt/openwrt/issues/6117), filed August 2019, still unresolved). The OpenWrt wiki explicitly warns: *"Flashing an OpenWrt ath79 version after 19.07.10 will brick the unit"* for AR7240-based Ubiquiti devices.
+AREDN's `ubnt_rocket-m` image uses a device tree for the AR7241, which has two critical incompatibilities with the AR7240:
 
-## Symptoms
+1. **Ethernet**: The built-in switch is on `mdio1` (AR7241) vs `mdio0` (AR7240). Wrong bus = switch never initializes = no link. ([openwrt/openwrt#6117](https://github.com/openwrt/openwrt/issues/6117))
 
-- `ip link` shows `eth0` as `NO-CARRIER` / `state DOWN`
-- `ethtool eth0` shows `Link detected: no`, `Auto-negotiation: off`, `Speed: 10Mb/s`
-- `dmesg` shows: `connected to PHY at mdio.0:1f:04 [uid=00000000, driver=Generic PHY]`
-- `swconfig dev switch0 show` reports all ports as `link:up speed:10baseT half-duplex` (bogus)
-- Device works fine with AirOS or older ar71xx-based AREDN builds
+2. **WiFi**: On the AR7240, the PCI wifi card enumerates with garbled device ID `168c:ff1c` because the EEPROM isn't loaded before bus scan. The old `ar71xx` target had a `pci-ath9k-fixup` for this; ath79 does not. ath9k never binds because `ff1c` isn't in its device table. ([openwrt/openwrt#6707](https://github.com/openwrt/openwrt/issues/6707))
 
-## How to identify your hardware
-
-```
-cat /proc/cpuinfo | grep "system type"
-```
-
-- `Atheros AR7240 rev 2` — **affected**, needs this fix
-- `Atheros AR7241 rev 1` — works fine with stock AREDN image
+Both are long-standing upstream OpenWrt bugs (2018/2019) that were never fixed for this hardware.
 
 ## The Fix
 
-A single patch (`patches/803-ubiquiti-rocket-m-ar7240.patch`) that fixes both Ethernet and WiFi:
+A single quilt patch (`patches/803-ubiquiti-rocket-m-ar7240.patch`) that:
 
-**Ethernet fix:**
-1. Replaces the DTS from `ar7241.dtsi` → `ar7240.dtsi`, putting the built-in switch on the correct MDIO bus (mdio0 instead of mdio1)
-2. Adds `&eth0 { fixed-link { speed = <100>; full-duplex; }; }` for proper CPU-to-switch link
-3. Changes the SOC identifier in the image Makefile from `ar7241` → `ar7240`
-
-**WiFi fix:**
-4. Adds PCI device ID `0xff1c` to the ath9k driver's device table. On the AR7240, the PCI wifi card enumerates with a garbled device ID (`168c:ff1c`) because the EEPROM isn't loaded before PCI bus scan (unlike AR7241 which reads correctly). The old `ar71xx` target had a `pci-ath9k-fixup` mechanism for this; ath79 does not ([openwrt/openwrt#6707](https://github.com/openwrt/openwrt/issues/6707)). Adding the ID to the driver table lets ath9k bind and load calibration data normally.
-
-The board name and all other identifiers remain `ubnt,rocket-m` so no other AREDN scripts need modification.
+1. Replaces the DTS with one based on `ar7240.dtsi` (switch on mdio0, correct PLL/MAC config, eth0 fixed-link at 100Mbps)
+2. Changes the SOC identifier to `ar7240` in the image Makefile
+3. Adds a mac80211 patch (`514-ath9k_add_ar7240_pci_id.patch`) that puts `168c:ff1c` in ath9k's PCI device table so the driver binds despite the garbled enumeration ID
 
 ## Pre-built Firmware
 
-The `releases/` directory contains firmware built from **AREDN 4.26.7.0** (tag `4.26.7.0`, OpenWrt `v25.12.5`) with only this patch applied:
+Built from **AREDN 4.26.7.0** (OpenWrt v25.12.5):
 
-- `aredn-n3lp--93ad9ea9-ath79-generic-ubnt_rocket-m-squashfs-factory.bin` — for TFTP/U-Boot flashing
-- `aredn-n3lp--93ad9ea9-ath79-generic-ubnt_rocket-m-squashfs-sysupgrade.bin` — for sysupgrade
+- `aredn-n3lp--93ad9ea9-ath79-generic-ubnt_rocket-m-squashfs-factory.bin` — TFTP/U-Boot flash
+- `aredn-n3lp--93ad9ea9-ath79-generic-ubnt_rocket-m-squashfs-sysupgrade.bin` — sysupgrade
 
-**⚠️ WARNING:** This image is AR7240-only. Do NOT flash on AR7241 hardware — it will break Ethernet on those devices.
+**⚠️ This image is AR7240-only. Do NOT flash on AR7241 hardware.**
 
-## Flashing via TFTP (U-Boot recovery)
+## Flashing
 
-1. Set your computer to static IP `192.168.1.10/24`
-2. Start a TFTP server serving the `factory.bin` file
-3. Hold the reset button while powering on the Rocket M
-4. Wait for the device to pull the image via TFTP
-5. Release reset after LEDs indicate flash complete
-6. Device will reboot to `192.168.1.1`
+1. Set your computer to `192.168.1.10/24`
+2. Start TFTP server with the `factory.bin`
+3. Hold reset while powering on the Rocket M
+4. Wait for TFTP transfer and reboot
+5. Device comes up at `192.168.1.1`
 
 ## Building From Source
-
-Clone the AREDN repo at tag `4.26.7.0`, add the patch, and build:
 
 ```bash
 git clone https://github.com/aredn/aredn.git
@@ -69,18 +51,16 @@ cd aredn
 git checkout 4.26.7.0
 cp /path/to/803-ubiquiti-rocket-m-ar7240.patch patches/
 echo "803-ubiquiti-rocket-m-ar7240.patch" >> patches/series
-# Edit config.mk: set PRIVATE_BUILD_VERSION to your callsign
+# Edit config.mk: PRIVATE_BUILD_VERSION=<your callsign>
 make
 ```
 
-Output: `firmware/targets/ath79/generic/*ubnt_rocket-m-squashfs-factory.bin`
-
 ## References
 
-- [OpenWrt Issue #6117](https://github.com/openwrt/openwrt/issues/6117) — eth0 doesn't work on ath79 and AR7240 Rev 2 for ubnt-bullet-m
+- [openwrt/openwrt#6117](https://github.com/openwrt/openwrt/issues/6117) — AR7240 Ethernet broken on ath79
+- [openwrt/openwrt#6707](https://github.com/openwrt/openwrt/issues/6707) — pci-ath9k-fixup never called on ath79
 - [OpenWrt Wiki: Ubiquiti Airmax M](https://openwrt.org/toh/ubiquiti/airmaxm) — documents the AR7240 incompatibility
-- [AREDN Forum: Rocket M5 no network](https://www.arednmesh.org/content/rocket-m5) — other users hitting the same issue
 
 ## License
 
-Patch is GPL-2.0-or-later, consistent with OpenWrt/AREDN licensing.
+GPL-2.0-or-later, consistent with OpenWrt/AREDN.
