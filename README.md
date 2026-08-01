@@ -28,6 +28,8 @@ A single quilt patch (`patches/803-ubiquiti-rocket-m-ar7240.patch`) that:
 
 ## Pre-built Firmware
 
+**[Download from Releases](https://github.com/barberd/aredn-rocket-m-ar7240-fix/releases/latest)**
+
 Built from **AREDN 4.26.7.0** (OpenWrt v25.12.5):
 
 - `aredn-n3lp--93ad9ea9-ath79-generic-ubnt_rocket-m-squashfs-factory.bin` — TFTP/U-Boot flash
