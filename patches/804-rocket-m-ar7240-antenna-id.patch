@@ -1,0 +1,24 @@
+diff --git a/files/usr/share/ucode/aredn/hardware.uc b/files/usr/share/ucode/aredn/hardware.uc
+index 67f38047..96f7c6f2 100755
+--- a/files/usr/share/ucode/aredn/hardware.uc
++++ b/files/usr/share/ucode/aredn/hardware.uc
+@@ -107,6 +107,19 @@ export function getBoardId()
+                 name = sprintf("0x%02x%02x", ord(d, 0), ord(d, 1));
+             }
+         }
++        // AR7240 Rocket M (XM) boards leave the PCI subsystem_device
++        // unprogrammed (reads 0x0000), so the radio cannot be identified and
++        // no antenna list is offered. Its AR7241 sibling reports 0xe1b2
++        // ("Ubiquiti Rocket M2"). Both share board id "ubnt,rocket-m", so map
++        // the AR7240 to the same entry to get the correct antenna list and
++        // power profile. (trim() guards against the trailing newline that
++        // subsystem_device returns, e.g. "0x0000\n".)
++        if (model.id == "ubnt,rocket-m") {
++            const n = trim(name);
++            if (!n || n == "" || n == "0x0000") {
++                name = "0xe1b2";
++            }
++        }
+     }
+     if (!name || name === "" || name === "0x0000") {
+         name = model.name;
